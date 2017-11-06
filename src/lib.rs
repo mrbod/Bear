@@ -16,16 +16,16 @@ pub mod parameters;
 
 
 use std::result;
-use std::io;
 
 #[derive(Debug)]
 pub enum Error {
-    Io(io::Error),
+    Io(std::io::Error),
+    Env(std::env::VarError),
     Json(serde_json::Error),
 }
 
-impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Error {
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Error {
         Error::Io(err)
     }
 }
@@ -33,6 +33,12 @@ impl From<io::Error> for Error {
 impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Error {
         Error::Json(err)
+    }
+}
+
+impl From<std::env::VarError> for Error {
+    fn from(err: std::env::VarError) -> Error {
+        Error::Env(err)
     }
 }
 

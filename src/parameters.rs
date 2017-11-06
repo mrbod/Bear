@@ -4,40 +4,58 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 use std::env;
+use std::io;
+use std::ffi::{OsStr, OsString};
 use serde_json;
 
-#[derive(Serialize, Deserialize, Debug)]
+use Result;
+use Error;
+
+
+#[derive(Serialize, Deserialize)]
 pub struct Parameters {
-    pub cc: String,
-    pub cxx: String,
-}
-
-const ENV_KEY: &'static str = "__BEAR";
-
-pub fn read() -> Option<Parameters> {
-    let value = env::var(ENV_KEY).unwrap();
-    read_from_string(value)
+    cc: OsString,
+    cxx: OsString,
 }
 
 impl Parameters {
-    pub fn to_env(&self) -> (String, String) {
-        let value = write_to_string(self);
-        (ENV_KEY.to_string(), value.unwrap())
+    pub fn new(cc: &str, cxx: &str) -> Parameters {
+        Parameters { cc: OsString::from(cc), cxx: OsString::from(cxx) }
+    }
+
+    pub fn get_cc(&self) -> &OsString {
+        &self.cc
+    }
+
+    pub fn get_cxx(&self) -> &OsString {
+        &self.cxx
+    }
+
+    pub fn write(&self) -> Result<OsString> {
+        let result = serde_json::to_string(self)?;
+        Ok(OsString::from(result))
+    }
+
+    pub fn read(source: &OsString) -> Result<Parameters> {
+        match source.to_str() {
+            Some(string) => {
+                let result = serde_json::from_str(string)?;
+                Ok(result)
+            }
+            None => Err(Error::Io(io::Error::from(io::ErrorKind::InvalidInput)))
+        }
     }
 }
 
-fn read_from_string(input: String) -> Option<Parameters> {
-    let result = serde_json::from_str(input.as_str());
-    match result {
-        Ok(value) => Some(value),
-        Err(_) => None,
-    }
+
+const ENV_KEY: &'static str = "__BEAR";
+
+pub fn to_env(parameters: &Parameters) -> Result<(OsString, OsString)> {
+    let key: OsString = OsString::from(ENV_KEY);
+    parameters.write().map(|value| (key, value))
 }
 
-fn write_to_string(input: &Parameters) -> Option<String> {
-    let result = serde_json::to_string(input);
-    match result {
-        Ok(value) => Some(value),
-        Err(_) => None,
-    }
+pub fn from_env() -> Result<Parameters> {
+    let value = env::var(ENV_KEY)?;
+    Parameters::read(&OsString::from(&value))
 }

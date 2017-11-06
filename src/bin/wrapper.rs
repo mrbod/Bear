@@ -16,9 +16,9 @@ use std::process;
 fn main() {
     let build: Vec<_> = env::args().collect();
     let args = &build[1..];
-    let config = parameters::read().unwrap();
+    let config = parameters::from_env().unwrap();
 
-    let command = process::Command::new(config.cc)
+    let command = process::Command::new(config.get_cc())
         .args(args)
         .spawn();
 

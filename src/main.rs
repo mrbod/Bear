@@ -60,11 +60,12 @@ fn main() {
             .help("The build command to intercept"))
         .get_matches();
 
-    let config = parameters::Parameters {
-        cc: matches.value_of("cc_compiler").unwrap().to_string(),
-        cxx: matches.value_of("cxx_compiler").unwrap().to_string(),
-    };
-    let (config_key, config_val) = config.to_env();
+    let config = parameters::Parameters::new(
+        matches.value_of("cc_compiler").unwrap(),
+        matches.value_of("cxx_compiler").unwrap()
+    );
+
+    let (config_key, config_val) = parameters::to_env(&config).unwrap();
     let build: Vec<_> = matches.values_of("build").unwrap().collect();
 
     let mut command = process::Command::new(build[0]);
