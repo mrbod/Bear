@@ -13,3 +13,27 @@ extern crate tempdir;
 
 pub mod trace;
 pub mod parameters;
+
+
+use std::result;
+use std::io;
+
+#[derive(Debug)]
+pub enum Error {
+    Io(io::Error),
+    Json(serde_json::Error),
+}
+
+impl From<io::Error> for Error {
+    fn from(err: io::Error) -> Error {
+        Error::Io(err)
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(err: serde_json::Error) -> Error {
+        Error::Json(err)
+    }
+}
+
+type Result<T> = result::Result<T, Error>;

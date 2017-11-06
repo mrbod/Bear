@@ -3,68 +3,64 @@
 // Licensed under the MIT license <LICENSE or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-use serde_derive;
+use std::env;
+use std::io;
+use std::fs::{OpenOptions, File};
+use std::path::Path;
+use std::ffi::OsString;
+use libc;
 use serde_json;
 
-use std::io;
-use std::fs::OpenOptions;
-use std::path::PathBuf;
-use std::cmp::PartialEq;
-
+use Result;
 
 #[derive(Serialize, Deserialize)]
-#[derive(Debug, PartialEq)]
 pub struct Trace {
-    pub pid: usize,
-    pub cwd: String,
-    pub cmd: Vec<String>
+    pid: libc::pid_t,
+    cwd: OsString,
+    cmd: Vec<OsString>
 }
-
-#[derive(Debug)]
-pub enum TraceError {
-    Io(io::Error),
-    Json(serde_json::Error),
-}
-
-impl From<io::Error> for TraceError {
-    fn from(err: io::Error) -> TraceError {
-        TraceError::Io(err)
-    }
-}
-
-impl From<serde_json::Error> for TraceError {
-    fn from(err: serde_json::Error) -> TraceError {
-        TraceError::Json(err)
-    }
-}
-
 
 impl Trace {
     /// Create an Trace report object from the given arguments.
     /// Capture the current process id and working directory.
-    pub fn create(args: &Vec<String>) -> Option<Trace> {
-        // get pid
-        // get cwd
-        return None;
+    pub fn create(args: &Vec<OsString>) -> Result<Trace> {
+        let pid: libc::pid_t = unsafe { libc::getpid() };
+        let cwd = env::current_dir()?;
+        Ok(Trace { pid: pid, cwd: cwd.into_os_string(), cmd: args.clone() })
     }
 
-    /// Creates an trace file in the given directory, with the given
-    /// content. Returns the created file path.
-    pub fn write(path: &PathBuf, value: &Trace) -> Result<PathBuf, TraceError> {
-        let file_name = path.join("random");
-        let mut file = OpenOptions::new().write(true).open(file_name.as_path())?;
-        let result = serde_json::to_writer(file, value)?;
-        Ok(file_name)
+    pub fn get_pid(&self) -> &libc::pid_t {
+        &self.pid
     }
 
-//    /// Read all trace files content from given directory.
-//    pub fn read_all(path: &PathBuf) -> Iterator<Trace> {
-//    }
-
-    /// Read a single trace file content from given file name.
-    pub fn read(path: &PathBuf) -> Result<Trace, TraceError> {
-        let mut file = OpenOptions::new().read(true).open(path.as_path())?;
-        let entry = serde_json::from_reader(file)?;
-        Ok(entry)
+    pub fn get_cwd(&self) -> &OsString {
+        &self.cwd
     }
+
+    pub fn get_cmd(&self) -> &[OsString] {
+        &self.cmd
+    }
+
+    /// Write a single trace entry into the given target.
+    pub fn write(target: &mut io::Write, value: &Trace) -> Result<()> {
+        let result = serde_json::to_writer(target, value)?;
+        Ok(result)
+    }
+
+    /// Read a single trace file content from given source.
+    pub fn read(source: &mut io::Read) -> Result<Trace> {
+        let result = serde_json::from_reader(source)?;
+        Ok(result)
+    }
+}
+
+pub fn create_writer(path: &Path) -> Result<File> {
+    let file_name = path.join("random");
+    let file = OpenOptions::new().write(true).open(file_name)?;
+    Ok(file)
+}
+
+pub fn create_reader(path: &Path) -> Result<File> {
+    let file = OpenOptions::new().read(true).open(path)?;
+    Ok(file)
 }
