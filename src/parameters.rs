@@ -5,7 +5,7 @@
 
 use std::env;
 use std::io;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use serde_json;
 
 use Result;

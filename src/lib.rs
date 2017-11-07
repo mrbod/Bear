@@ -13,6 +13,8 @@ extern crate tempdir;
 
 pub mod trace;
 pub mod parameters;
+pub mod database;
+pub mod compilation;
 
 
 use std::result;
