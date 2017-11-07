@@ -62,7 +62,8 @@ fn main() {
 
     let config = parameters::Parameters::new(
         matches.value_of("cc_compiler").unwrap(),
-        matches.value_of("cxx_compiler").unwrap()
+        matches.value_of("cxx_compiler").unwrap(),
+        "/tmp"  // todo: generate temporary directory
     );
 
     let (config_key, config_val) = parameters::to_env(&config).unwrap();

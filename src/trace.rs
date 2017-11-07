@@ -55,7 +55,7 @@ impl Trace {
 }
 
 pub fn create_writer(path: &Path) -> Result<File> {
-    let file_name = path.join("random");
+    let file_name = path.join("random");  // todo: generate random filename
     let file = OpenOptions::new().write(true).open(file_name)?;
     Ok(file)
 }
