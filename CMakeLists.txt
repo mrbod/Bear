@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8)
 
-project(bear C)
+project(bear C CXX)
 set(BEAR_VERSION "3.0.0")
 
 include(GNUInstallDirs)
