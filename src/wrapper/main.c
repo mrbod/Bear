@@ -17,6 +17,45 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-int main(int argc, char *argv[], char *envp[]) {
-    return 0;
+#include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+int main(int argc, char *argv[], char *envp[])
+{
+    int opt;
+    char * library = 0;
+    char * target = 0;
+    char ** command = 0;
+
+    while ((opt = getopt(argc, argv, "l:t:")) != -1) {
+        switch (opt) {
+            case 'l':
+                library = optarg;
+                break;
+            case 't':
+                target = optarg;
+                break;
+            default: /* '?' */
+                fprintf(stderr, "Usage: %s [-t target_url] [-l path_to_libear] command\n",
+                        argv[0]);
+                exit(EXIT_FAILURE);
+        }
+    }
+
+    if (optind >= argc) {
+        fprintf(stderr, "Expected argument after options\n");
+        exit(EXIT_FAILURE);
+    } else {
+        command = argv + optind;
+    }
+
+    printf("library=%s; target=%s\n", library, target);
+    printf("command argument:");
+    for (char ** it = command; *it != 0; ++it) {
+        printf(" %s", *it);
+    }
+    printf("\n");
+
+    exit(EXIT_SUCCESS);
 }
