@@ -18,44 +18,93 @@
  */
 
 #include <unistd.h>
-#include <stdlib.h>
-#include <stdio.h>
+#include <cstdlib>
+#include <cstdio>
+#include <type_traits>
+#include <variant>
 
-int main(int argc, char *argv[], char *envp[])
-{
+template<class T> struct always_false : std::false_type {};
+
+struct Error {
+    explicit Error(const char * const message)
+            : message_(message) {
+    }
+
+    ~Error() noexcept = default;
+
+    const char* what() const noexcept {
+        return message_;
+    }
+
+private:
+    const char * const message_;
+};
+
+template <class T>
+using Result = std::variant<Error, T>;
+
+
+struct State {
+    char * library;
+    char * target;
+    char ** command;
+
+    State()
+            : library(nullptr)
+            , target(nullptr)
+            , command(nullptr) {
+    }
+};
+
+Result<State> parse(int argc, char *argv[]) {
+    State result;
+
     int opt;
-    char * library = 0;
-    char * target = 0;
-    char ** command = 0;
-
     while ((opt = getopt(argc, argv, "l:t:")) != -1) {
         switch (opt) {
             case 'l':
-                library = optarg;
+                result.library = optarg;
                 break;
             case 't':
-                target = optarg;
+                result.target = optarg;
                 break;
             default: /* '?' */
-                fprintf(stderr, "Usage: %s [-t target_url] [-l path_to_libear] command\n",
-                        argv[0]);
-                exit(EXIT_FAILURE);
+                return Result<State>(Error(
+                        "Usage: wrapper [-t target_url] [-l path_to_libear] command"
+                ));
         }
     }
 
     if (optind >= argc) {
-        fprintf(stderr, "Expected argument after options\n");
-        exit(EXIT_FAILURE);
+        return Result<State>(Error(
+                "Expected argument after options"
+        ));
     } else {
-        command = argv + optind;
+        result.command = argv + optind;
     }
 
-    printf("library=%s; target=%s\n", library, target);
-    printf("command argument:");
-    for (char ** it = command; *it != 0; ++it) {
-        printf(" %s", *it);
-    }
-    printf("\n");
+    return Result<State>(result);
+}
+
+int main(int argc, char *argv[], char *envp[]) {
+    const Result<State>& state = parse(argc, argv);
+
+    std::visit([](auto&& arg) {
+        using T = std::decay_t<decltype(arg)>;
+        if constexpr (std::is_same_v<T, State>) {
+            printf("library=%s; target=%s\n", arg.library, arg.target);
+            printf("command argument:");
+            for (char ** it = arg.command; *it != nullptr; ++it) {
+                printf(" %s", *it);
+            }
+            printf("\n");
+        } else if constexpr (std::is_same_v<T, Error>) {
+            fprintf(stderr, "%s\n", arg.what());
+            exit(EXIT_FAILURE);
+        } else {
+            static_assert(always_false<T>::value, "non-exhaustive visitor!");
+        }
+    }, state);
 
     exit(EXIT_SUCCESS);
 }
