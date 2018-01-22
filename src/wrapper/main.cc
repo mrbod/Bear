@@ -20,40 +20,13 @@
 #include <unistd.h>
 #include <cstdlib>
 #include <cstdio>
-#include <type_traits>
-#include <variant>
 
-template<class T> struct always_false : std::false_type {};
-
-struct Error {
-    explicit Error(const char * const message)
-            : message_(message) {
-    }
-
-    ~Error() noexcept = default;
-
-    const char* what() const noexcept {
-        return message_;
-    }
-
-private:
-    const char * const message_;
-};
-
-template <class T>
-using Result = std::variant<Error, T>;
-
+#include "Result.h"
 
 struct State {
     char * library;
     char * target;
     char ** command;
-
-    State()
-            : library(nullptr)
-            , target(nullptr)
-            , command(nullptr) {
-    }
 };
 
 Result<State> parse(int argc, char *argv[]) {
@@ -69,42 +42,30 @@ Result<State> parse(int argc, char *argv[]) {
                 result.target = optarg;
                 break;
             default: /* '?' */
-                return Result<State>(Error(
+                return Result<State>::failure(
                         "Usage: wrapper [-t target_url] [-l path_to_libear] command"
-                ));
+                );
         }
     }
 
     if (optind >= argc) {
-        return Result<State>(Error(
+        return Result<State>::failure(
                 "Expected argument after options"
-        ));
+        );
     } else {
         result.command = argv + optind;
     }
 
-    return Result<State>(result);
+    return Result<State>::success(result);
 }
 
 int main(int argc, char *argv[], char *envp[]) {
-    const Result<State>& state = parse(argc, argv);
+    const Result<State>& args = parse(argc, argv);
 
-    std::visit([](auto&& arg) {
-        using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, State>) {
-            printf("library=%s; target=%s\n", arg.library, arg.target);
-            printf("command argument:");
-            for (char ** it = arg.command; *it != nullptr; ++it) {
-                printf(" %s", *it);
-            }
-            printf("\n");
-        } else if constexpr (std::is_same_v<T, Error>) {
-            fprintf(stderr, "%s\n", arg.what());
-            exit(EXIT_FAILURE);
-        } else {
-            static_assert(always_false<T>::value, "non-exhaustive visitor!");
-        }
-    }, state);
+    args.handle_with([](const char *const message) {
+        fprintf(stderr, "%s\n", message);
+        exit(EXIT_FAILURE);
+    });
 
     exit(EXIT_SUCCESS);
 }
