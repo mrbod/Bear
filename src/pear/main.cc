@@ -30,7 +30,7 @@ struct State {
 };
 
 Result<State> parse(int argc, char *argv[]) {
-    State result;
+    State result = {nullptr, nullptr, nullptr};
 
     int opt;
     while ((opt = getopt(argc, argv, "l:t:")) != -1) {
@@ -43,7 +43,8 @@ Result<State> parse(int argc, char *argv[]) {
                 break;
             default: /* '?' */
                 return Result<State>::failure(
-                        "Usage: wrapper [-t target_url] [-l path_to_libear] command"
+                        // todo: get process name from `argv[0]`.
+                        "Usage: pear [-t target_url] [-l path_to_libear] command"
                 );
         }
     }

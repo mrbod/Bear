@@ -78,7 +78,7 @@ public:
     }
 
     template <class U>
-    Result<U> bind(Result<U> (*f)(T&&)) const noexcept {
+    Result<U> bind(Result<U> (*f)(const T&)) const noexcept {
         if (auto ptr = std::get_if<T>(&state)) {
             return f(*ptr);
         } else if (auto error = std::get_if<Error>(&state)) {
