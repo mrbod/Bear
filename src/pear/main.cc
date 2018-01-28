@@ -24,9 +24,9 @@
 #include "Result.h"
 
 struct State {
-    char * library;
-    char * target;
-    char ** command;
+    char *library;
+    char *target;
+    char **command;
 };
 
 Result<State> parse(int argc, char *argv[]) {
@@ -61,7 +61,7 @@ Result<State> parse(int argc, char *argv[]) {
 }
 
 int main(int argc, char *argv[], char *envp[]) {
-    const Result<State>& args = parse(argc, argv);
+    const Result<State> &args = parse(argc, argv);
 
     args.handle_with([](const char *const message) {
         fprintf(stderr, "%s\n", message);

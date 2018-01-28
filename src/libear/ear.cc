@@ -22,7 +22,9 @@
 #include <dlfcn.h>
 
 #if defined HAVE_POSIX_SPAWN || defined HAVE_POSIX_SPAWNP
+
 # include <spawn.h>
+
 #endif
 
 #if defined HAVE_NSGETENVIRON
@@ -143,8 +145,8 @@ namespace {
      * @param begin the input array to count,
      * @return the pointer which points the nullptr.
      */
-    template <typename T>
-    T* get_array_end(T *const begin) {
+    template<typename T>
+    T *get_array_end(T *const begin) {
         auto it = begin;
         while (*it != nullptr)
             ++it;
@@ -157,7 +159,7 @@ namespace {
      * @param begin the input array to count,
      * @return the size of the array.
      */
-    template <typename T>
+    template<typename T>
     size_t get_array_length(T *const begin) {
         return get_array_end(begin) - begin;
     }
@@ -180,13 +182,13 @@ namespace {
             auto const key = std::string_view(*key_ptr);
             auto const eq = std::find(key.begin(), key.end(), '=');
             return (eq != key.end())
-                ? std::string_view(eq, key.end() - eq)
-                : std::string_view();
+                   ? std::string_view(eq, key.end() - eq)
+                   : std::string_view();
         }
         return std::string_view();
     }
 
-    char ** capture_env_array() {
+    char **capture_env_array() {
 #ifdef HAVE_NSGETENVIRON
         return = *_NSGetEnviron();
 #else

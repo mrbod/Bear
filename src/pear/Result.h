@@ -21,7 +21,7 @@
 
 #include <variant>
 
-template <class T>
+template<class T>
 class Result {
 private:
     using Error = const char *;
@@ -31,25 +31,25 @@ private:
 public:
     Result() = delete;
 
-    private:
-    explicit Result(const T& other) noexcept
-    : state(State(other)) {
+private:
+    explicit Result(const T &other) noexcept
+            : state(State(other)) {
     }
 
     explicit Result(Error const error) noexcept
-    : state(State(error)) {
+            : state(State(error)) {
     }
 
 public:
-    Result(const Result& other) noexcept = delete;
+    Result(const Result &other) noexcept = delete;
 
-    Result(Result&& other) noexcept {
+    Result(Result &&other) noexcept {
         state = other.state;
     }
 
-    Result& operator=(const Result& other) = delete;
+    Result &operator=(const Result &other) = delete;
 
-    Result& operator=(Result&& other) noexcept {
+    Result &operator=(Result &&other) noexcept {
         if (this != &other) {
             state = other.state;
         }
@@ -59,7 +59,7 @@ public:
     ~Result() noexcept = default;
 
 public:
-    static Result success(const T& value) noexcept {
+    static Result success(const T &value) noexcept {
         return Result(value);
     }
 
@@ -68,8 +68,8 @@ public:
     }
 
 public:
-    template <class U>
-    Result<U> map(U (*f)(const T&)) const noexcept {
+    template<class U>
+    Result<U> map(U (*f)(const T &)) const noexcept {
         if (auto ptr = std::get_if<T>(&state)) {
             return Result<U>::success(f(*ptr));
         } else if (auto error = std::get_if<Error>(&state)) {
@@ -77,8 +77,8 @@ public:
         }
     }
 
-    template <class U>
-    Result<U> bind(Result<U> (*f)(const T&)) const noexcept {
+    template<class U>
+    Result<U> bind(Result<U> (*f)(const T &)) const noexcept {
         if (auto ptr = std::get_if<T>(&state)) {
             return f(*ptr);
         } else if (auto error = std::get_if<Error>(&state)) {
