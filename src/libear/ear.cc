@@ -36,6 +36,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <algorithm>
 #include <atomic>
 #include <string_view>
@@ -129,15 +130,10 @@ namespace {
     char library[page_size];
     char wrapper[page_size];
 
-    constexpr char const target_env_key_literal[] = "BEAR_TARGET";
-    constexpr char const library_env_key_literal[] = "BEAR_LIBRARY";
-    constexpr char const wrapper_env_key_literal[] = "BEAR_WRAPPER";
-    constexpr size_t target_env_key_size = sizeof(target_env_key_literal);
-    constexpr size_t library_env_key_size = sizeof(library_env_key_literal);
-    constexpr size_t wrapper_env_key_size = sizeof(wrapper_env_key_literal);
-    constexpr std::string_view target_env_key(target_env_key_literal, target_env_key_size);
-    constexpr std::string_view library_env_key(library_env_key_literal, library_env_key_size);
-    constexpr std::string_view wrapper_env_key(wrapper_env_key_literal, wrapper_env_key_size);
+    using namespace std::string_view_literals;
+    constexpr std::string_view target_env_key = "BEAR_TARGET"sv;
+    constexpr std::string_view library_env_key = "BEAR_LIBRARY"sv;
+    constexpr std::string_view wrapper_env_key = "BEAR_WRAPPER"sv;
 
     /**
      * Return a pointer to the last element of a nullptr terminated array.
@@ -146,7 +142,7 @@ namespace {
      * @return the pointer which points the nullptr.
      */
     template<typename T>
-    T *get_array_end(T *const begin) {
+    constexpr T *get_array_end(T *const begin) {
         auto it = begin;
         while (*it != nullptr)
             ++it;
@@ -160,7 +156,7 @@ namespace {
      * @return the size of the array.
      */
     template<typename T>
-    size_t get_array_length(T *const begin) {
+    constexpr size_t get_array_length(T *const begin) {
         return get_array_end(begin) - begin;
     }
 
@@ -172,20 +168,21 @@ namespace {
      * @return the value
      */
     std::string_view get_env_value(char **const begin, std::string_view const &name) {
+        constexpr std::string_view not_found = std::string_view();
+
         auto const end = get_array_end(begin);
-        auto const key_ptr = std::find_if(begin, end, [](auto env_it) {
-            auto const env = std::string_view(env_it);
-            // todo: implement it
-            return false;
+        auto const key_value_pair = std::find_if(begin, end, [name](auto env_it) {
+            // Found if "key=value".find_first_of("key") is zero.
+            return (std::string_view(env_it).find_first_of(name) == 0);
         });
-        if (key_ptr != end) {
-            auto const key = std::string_view(*key_ptr);
-            auto const eq = std::find(key.begin(), key.end(), '=');
-            return (eq != key.end())
-                   ? std::string_view(eq, key.end() - eq)
-                   : std::string_view();
-        }
-        return std::string_view();
+        if (key_value_pair == end)
+            return not_found;
+
+        auto const result = std::string_view(*key_value_pair);
+        auto const eq_pos = result.find_first_of('=');
+        return ((eq_pos == std::string_view::npos) || (eq_pos == result.size()))
+                ? not_found
+                : std::string_view(std::begin(result) + eq_pos + 1);
     }
 
     char **capture_env_array() {
@@ -204,7 +201,7 @@ namespace {
         if (value.empty() || (value.size() >= page_size))
             return false;
         // Copy it.
-        auto end_ptr = std::copy(value.begin(), value.end(), dst);
+        auto end_ptr = std::copy(std::begin(value), std::end(value), dst);
         // Make a zero terminated string.
         *end_ptr = 0;
 
@@ -212,21 +209,31 @@ namespace {
     }
 }
 
-/* Initialization method to Captures the relevant environment variables.
+/**
+ * Library entry point.
+ *
+ * The first method to call after the library is loaded into memory.
  */
-
 void on_load() {
     // Test whether on_load was called already.
     if (loaded.exchange(true))
         return;
-
+    // Try to get the environment variables.
     auto const env_ptr = capture_env_array();
+    if (env_ptr == nullptr)
+        return;
+    // Capture the relevant environment variables.
     initialized =
             capture_env_value(env_ptr, target_env_key, target) &&
             capture_env_value(env_ptr, library_env_key, library) &&
             capture_env_value(env_ptr, wrapper_env_key, wrapper);
 }
 
+/**
+ * Library exit point.
+ *
+ * The last method which needs to be called when the library is unloaded.
+ */
 void on_unload() {
     initialized = false;
 }
@@ -238,7 +245,7 @@ namespace {
 //        return nullptr;
 //    }
 
-    int exec_wrapper(char *const src[], int (*f)(const char *, char **const)) {
+    int exec_wrapper(char *const src[], int (*f)(const char*, char **)) {
         constexpr char const *target_flag = "-t";
         constexpr char const *library_flag = "-l";
 
@@ -310,6 +317,7 @@ namespace {
 
 #ifdef HAVE_EXECVE
 
+extern "C"
 int execve(const char *path, char *const argv[], char *const envp[]) {
     if (initialized) {
         return exec_wrapper(argv, [](const char *path2, char **const argv2) {

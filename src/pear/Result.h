@@ -21,7 +21,7 @@
 
 #include <variant>
 
-template<class T>
+template<typename T>
 class Result {
 private:
     using Error = const char *;
@@ -68,7 +68,7 @@ public:
     }
 
 public:
-    template<class U>
+    template<typename U>
     Result<U> map(U (*f)(const T &)) const noexcept {
         if (auto ptr = std::get_if<T>(&state)) {
             return Result<U>::success(f(*ptr));
@@ -77,7 +77,7 @@ public:
         }
     }
 
-    template<class U>
+    template<typename U>
     Result<U> bind(Result<U> (*f)(const T &)) const noexcept {
         if (auto ptr = std::get_if<T>(&state)) {
             return f(*ptr);
