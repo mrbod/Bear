@@ -20,193 +20,42 @@
 #include "config.h"
 
 #include <dlfcn.h>
-
+#include <unistd.h>
 #if defined HAVE_POSIX_SPAWN || defined HAVE_POSIX_SPAWNP
-
 # include <spawn.h>
-
 #endif
 
-#if defined HAVE_NSGETENVIRON
-# include <crt_externs.h>
-#endif
-
-#include <cstddef>
-#include <cstdarg>
-#include <cstdlib>
 #include <cstdio>
-#include <cstring>
-#include <functional>
-#include <algorithm>
+#include <cstdlib>
+#include <cstdarg>
 #include <atomic>
-#include <string_view>
 
+#include "environment.h"
 
-extern "C" {
-
-void on_load() __attribute__((constructor));
-void on_unload() __attribute__((destructor));
-
-#ifdef HAVE_EXECVE
-int execve(const char *path, char *const argv[], char *const envp[]);
-#endif
-
-#ifdef HAVE_EXECV
-int execv(const char *path, char *const argv[]);
-#endif
-
-#ifdef HAVE_EXECVPE
-int execvpe(const char *file, char *const argv[], char *const envp[]);
-#endif
-
-#ifdef HAVE_EXECVP
-int execvp(const char *file, char *const argv[]);
-#endif
-
-#ifdef HAVE_EXECVP2
-int execvP(const char *file, const char *search_path, char *const argv[]);
-#endif
-
-#ifdef HAVE_EXECT
-int exect(const char *path, char *const argv[], char *const envp[]);
-#endif
-
-#ifdef HAVE_EXECL
-int execl(const char *path, const char *arg, ...);
-#endif
-
-#ifdef HAVE_EXECLP
-int execlp(const char *file, const char *arg, ...);
-#endif
-
-#ifdef HAVE_EXECLE
-// int execle(const char *path, const char *arg, ..., char * const envp[]);
-int execle(const char *path, const char *arg, ...);
-#endif
-
-#ifdef HAVE_POSIX_SPAWN
-int posix_spawn(pid_t *pid, const char *path,
-                const posix_spawn_file_actions_t *file_actions,
-                const posix_spawnattr_t *attrp,
-                char *const argv[], char *const envp[]);
-#endif
-
-#ifdef HAVE_POSIX_SPAWNP
-int posix_spawnp(pid_t *pid, const char *file,
-                 const posix_spawn_file_actions_t *file_actions,
-                 const posix_spawnattr_t *attrp,
-                 char *const argv[], char *const envp[]);
-#endif
-
-}
-
-
+// TODO: these macros are using libc methods (perror, exit)
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
 #define AT "libear: (" __FILE__ ":" TOSTRING(__LINE__) ") "
 
-#define PERROR(msg) do { perror(AT msg); } while (0)
+#define PERROR(msg) do { perror(AT msg); } while (false)
 
-#define ERROR_AND_EXIT(msg) do { PERROR(msg); exit(EXIT_FAILURE); } while (0)
-
-#define DLSYM(TYPE_, VAR_, SYMBOL_)                                 \
-    union {                                                         \
-        void *from;                                                 \
-        TYPE_ to;                                                   \
-    } cast;                                                         \
-    if (0 == (cast.from = dlsym(RTLD_NEXT, SYMBOL_))) {             \
-        PERROR("dlsym");                                            \
-        exit(EXIT_FAILURE);                                         \
-    }                                                               \
-    TYPE_ const VAR_ = cast.to;
+#define ERROR_AND_EXIT(msg) do { PERROR(msg); exit(EXIT_FAILURE); } while (false)
 
 
 namespace {
+    constexpr size_t page_size = 4096;
+    constexpr char target_env_key[] = "BEAR_TARGET";
+    constexpr char library_env_key[] = "BEAR_LIBRARY";
+    constexpr char wrapper_env_key[] = "BEAR_WRAPPER";
+    constexpr char target_flag[] = "-t";
+    constexpr char library_flag[] = "-l";
+
     std::atomic<bool> loaded = false;
     bool initialized = false;
 
-    constexpr size_t page_size = 4096;
     char target[page_size];
     char library[page_size];
     char wrapper[page_size];
-
-    using namespace std::string_view_literals;
-    constexpr std::string_view target_env_key = "BEAR_TARGET"sv;
-    constexpr std::string_view library_env_key = "BEAR_LIBRARY"sv;
-    constexpr std::string_view wrapper_env_key = "BEAR_WRAPPER"sv;
-
-    /**
-     * Return a pointer to the last element of a nullptr terminated array.
-     *
-     * @param begin the input array to count,
-     * @return the pointer which points the nullptr.
-     */
-    template<typename T>
-    constexpr T *get_array_end(T *const begin) {
-        auto it = begin;
-        while (*it != nullptr)
-            ++it;
-        return it;
-    }
-
-    /**
-     * Return the size of a nullptr terminated array.
-     *
-     * @param begin the input array to count,
-     * @return the size of the array.
-     */
-    template<typename T>
-    constexpr size_t get_array_length(T *const begin) {
-        return get_array_end(begin) - begin;
-    }
-
-    /**
-     * Find the environment value in the given environments array.
-     *
-     * @param begin the environment key=value pair array
-     * @param name the environment key
-     * @return the value
-     */
-    std::string_view get_env_value(char **const begin, std::string_view const &name) {
-        constexpr std::string_view not_found = std::string_view();
-
-        auto const end = get_array_end(begin);
-        auto const key_value_pair = std::find_if(begin, end, [name](auto env_it) {
-            // Found if "key=value".find_first_of("key") is zero.
-            return (std::string_view(env_it).find_first_of(name) == 0);
-        });
-        if (key_value_pair == end)
-            return not_found;
-
-        auto const result = std::string_view(*key_value_pair);
-        auto const eq_pos = result.find_first_of('=');
-        return ((eq_pos == std::string_view::npos) || (eq_pos == result.size()))
-                ? not_found
-                : std::string_view(std::begin(result) + eq_pos + 1);
-    }
-
-    char **capture_env_array() {
-#ifdef HAVE_NSGETENVIRON
-        return = *_NSGetEnviron();
-#else
-        void *result = dlsym(RTLD_NEXT, "environ");
-        return static_cast<char **>(result);
-#endif
-    }
-
-    bool capture_env_value(char **envp, std::string_view const &name, char *dst) {
-        // Get the environment value.
-        auto value = get_env_value(envp, name);
-        // Check we have enough space to store it.
-        if (value.empty() || (value.size() >= page_size))
-            return false;
-        // Copy it.
-        auto end_ptr = std::copy(std::begin(value), std::end(value), dst);
-        // Make a zero terminated string.
-        *end_ptr = 0;
-
-        return true;
-    }
 }
 
 /**
@@ -214,7 +63,8 @@ namespace {
  *
  * The first method to call after the library is loaded into memory.
  */
-void on_load() {
+extern "C" void on_load() __attribute__((constructor));
+extern "C" void on_load() {
     // Test whether on_load was called already.
     if (loaded.exchange(true))
         return;
@@ -224,9 +74,9 @@ void on_load() {
         return;
     // Capture the relevant environment variables.
     initialized =
-            capture_env_value(env_ptr, target_env_key, target) &&
-            capture_env_value(env_ptr, library_env_key, library) &&
-            capture_env_value(env_ptr, wrapper_env_key, wrapper);
+            capture_env_value(env_ptr, target_env_key, target, page_size) &&
+            capture_env_value(env_ptr, library_env_key, library, page_size) &&
+            capture_env_value(env_ptr, wrapper_env_key, wrapper, page_size);
 }
 
 /**
@@ -234,152 +84,189 @@ void on_load() {
  *
  * The last method which needs to be called when the library is unloaded.
  */
-void on_unload() {
+extern "C" void on_unload() __attribute__((destructor));
+extern "C" void on_unload() {
     initialized = false;
 }
 
 /* These are the methods we are try to hijack.
  */
 namespace {
-//    char const **string_array_from_varargs(char const *const arg, va_list *args) {
-//        return nullptr;
-//    }
 
-    int exec_wrapper(char *const src[], int (*f)(const char*, char **)) {
-        constexpr char const *target_flag = "-t";
-        constexpr char const *library_flag = "-l";
-
-        auto const src_length = get_array_length(src);
-        char *prefix[] = {
-                wrapper,
-                (char *) target_flag,
-                target,
-                (char *) library_flag,
-                library
+    int execve_wrapper(char *const src[],
+                     const char ** const envp,
+                     int (*fp)(const char *, const char **, const char **)) {
+        const size_t src_length = get_array_length(src);
+        const size_t dst_length = src_length + 6;
+        const char *dst[dst_length] = {
+                [0]=wrapper,
+                [1]=target_flag,
+                [2]=target,
+                [3]=library_flag,
+                [4]=library,
         };
-        char *dst[src_length + sizeof(prefix) + 1];
-        auto ptr = std::copy_n(prefix, sizeof(prefix), dst);
-        auto end_ptr = std::copy_n(src, src_length, ptr);
-        *end_ptr = nullptr;
+        copy(src, src + src_length, &dst[5], dst + src_length);
 
-        return f(wrapper, dst);
+        return fp(wrapper, dst, envp);
     }
-}
 
-namespace {
-
-#ifdef HAVE_EXECVE
-
-    int call_execve(const char *path, char *const argv[], char *const envp[]);
-
-#endif
-#ifdef HAVE_EXECVP
-
-    int call_execvp(const char *file, char *const argv[]);
-
-#endif
-#ifdef HAVE_EXECVPE
-
-    int call_execvpe(const char *file, char *const argv[], char *const envp[]);
-
-#endif
-#ifdef HAVE_EXECVP2
-
-    int call_execvP(const char *file, const char *search_path, char *const argv[]);
-
-#endif
-#ifdef HAVE_EXECT
-
-    int call_exect(const char *path, char *const argv[], char *const envp[]);
-
-#endif
-#ifdef HAVE_POSIX_SPAWN
-
-    int call_posix_spawn(pid_t *pid, const char *path,
-                         const posix_spawn_file_actions_t *file_actions,
-                         const posix_spawnattr_t *attrp,
-                         char *const argv[],
-                         char *const envp[]);
-
-#endif
-#ifdef HAVE_POSIX_SPAWNP
-
-    int call_posix_spawnp(pid_t *pid, const char *file,
-                          const posix_spawn_file_actions_t *file_actions,
-                          const posix_spawnattr_t *attrp,
-                          char *const argv[],
-                          char *const envp[]);
-
-#endif
-
+    template <typename F>
+    F typed_dlsym(const char *name) {
+        void *symbol = dlsym(RTLD_NEXT, name);
+        if (symbol == nullptr) {
+            ERROR_AND_EXIT("dlsym");
+        }
+        return reinterpret_cast<F>(symbol);
+    }
 }
 
 
 #ifdef HAVE_EXECVE
 
 extern "C"
-int execve(const char *path, char *const argv[], char *const envp[]) {
-    if (initialized) {
-        return exec_wrapper(argv, [](const char *path2, char **const argv2) {
-            return -2;
-        });
-    }
-    return -1;
+int execve(const char *, char *const argv[], char *const envp[]) {
+    if (not initialized)
+        ERROR_AND_EXIT("not initialized");
+
+    using execve_t = int (*)(const char*, const char **, const char **);
+    auto fp = typed_dlsym<execve_t>("execvpe");
+
+    auto const_envp = const_cast<const char **>(envp);
+
+    return execve_wrapper(argv, const_envp, fp);
 }
 
 #endif
 
 #ifdef HAVE_EXECV
 
-int execv(const char *path, char *const argv[]) {
-    return -1;
+extern "C"
+int execv(const char *, char *const argv[]) {
+    if (not initialized)
+        ERROR_AND_EXIT("not initialized");
+
+    using execve_t = int (*)(const char*, const char **, const char **);
+    auto fp = typed_dlsym<execve_t>("execve");
+
+    auto const_envp = capture_env_array();
+
+    return execve_wrapper(argv, const_envp, fp);
 }
 
 #endif
 
 #ifdef HAVE_EXECVPE
 
-int execvpe(const char *file, char *const argv[], char *const envp[]) {
-    return -1;
+extern "C"
+int execvpe(const char *, char *const argv[], char *const envp[]) {
+    if (not initialized)
+        ERROR_AND_EXIT("not initialized");
+
+    using execve_t = int (*)(const char*, const char **, const char **);
+    auto fp = typed_dlsym<execve_t>("execvpe");
+
+    auto const_envp = const_cast<const char **>(envp);
+
+    return execve_wrapper(argv, const_envp, fp);
 }
 
 #endif
 
 #ifdef HAVE_EXECVP
 
+extern "C"
 int execvp(const char *file, char *const argv[]) {
-    return -1;
+    if (not initialized)
+        ERROR_AND_EXIT("not initialized");
+
+    using execve_t = int (*)(const char*, const char **, const char **);
+    auto fp = typed_dlsym<execve_t>("execvp");
+
+    auto const_envp = capture_env_array();
+
+    return execve_wrapper(argv, const_envp, fp);
 }
 
 #endif
 
 #ifdef HAVE_EXECVP2
+
+extern "C"
 int execvP(const char *file, const char *search_path, char *const argv[]) {
-    return -1;
+    if (not initialized)
+        ERROR_AND_EXIT("not initialized");
+
+    using execve_t = int (*)(const char*, const char **, const char **);
+    auto fp = typed_dlsym<execve_t>("execve");
+
+    auto const_envp = capture_env_array();
+
+    return execve_wrapper(argv, const_envp, fp);
 }
+
 #endif
 
 #ifdef HAVE_EXECT
+
+extern "C"
 int exect(const char *path, char *const argv[], char *const envp[]) {
-    return -1;
+    if (not initialized)
+        ERROR_AND_EXIT("not initialized");
+
+    using execve_t = int (*)(const char*, const char **, const char **);
+    auto fp = typed_dlsym<execve_t>("execve");
+
+    auto const_envp = const_cast<const char **>(envp);
+
+    return execve_wrapper(argv, const_envp, fp);
 }
+
 #endif
 
 #ifdef HAVE_EXECL
 
+extern "C"
 int execl(const char *path, const char *arg, ...) {
-//    va_list args;
-//    va_start(args, arg);
-//    char const **argv = string_array_from_varargs(arg, &args);
-//    va_end(args);
+    if (not initialized)
+        ERROR_AND_EXIT("not initialized");
 
-    return -1;
+    va_list count;
+    va_start(count, arg);
+    va_list copy;
+    va_copy(copy, count);
+    // Count the arguments
+    size_t arg_count = 0;
+    for (char const *it = arg; it; it = va_arg(count, char const *)) {
+        ++arg_count;
+    }
+    va_end(count);
+
+    const size_t args_size = arg_count + 6;
+    const char *args[args_size] = {
+            [0]=wrapper,
+            [1]=target_flag,
+            [2]=target,
+            [3]=library_flag,
+            [4]=library
+    };
+    // Copy the arguments
+    const char **dst_it = &args[5];
+    for (char const *src_it = arg; src_it; src_it = va_arg(copy, char const *)) {
+        *dst_it++ = src_it;
+    }
+    va_end(copy);
+
+    using execv_t = int (*)(const char *, const char *argv[]);
+    auto fp = typed_dlsym<execv_t>("execv");
+
+    return fp(args[0], args);
 }
 
 #endif
 
 #ifdef HAVE_EXECLP
 
+extern "C"
 int execlp(const char *file, const char *arg, ...) {
 //    va_list args;
 //    va_start(args, arg);
@@ -394,6 +281,7 @@ int execlp(const char *file, const char *arg, ...) {
 #ifdef HAVE_EXECLE
 
 // int execle(const char *path, const char *arg, ..., char * const envp[]);
+extern "C"
 int execle(const char *path, const char *arg, ...) {
 //    va_list args;
 //    va_start(args, arg);
@@ -408,6 +296,7 @@ int execle(const char *path, const char *arg, ...) {
 
 #ifdef HAVE_POSIX_SPAWN
 
+extern "C"
 int posix_spawn(pid_t *pid, const char *path,
                 const posix_spawn_file_actions_t *file_actions,
                 const posix_spawnattr_t *attrp,
@@ -419,6 +308,7 @@ int posix_spawn(pid_t *pid, const char *path,
 
 #ifdef HAVE_POSIX_SPAWNP
 
+extern "C"
 int posix_spawnp(pid_t *pid, const char *file,
                  const posix_spawn_file_actions_t *file_actions,
                  const posix_spawnattr_t *attrp,
