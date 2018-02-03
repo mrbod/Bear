@@ -26,10 +26,15 @@ set(EAR_LIB_FILE ${CMAKE_SHARED_LIBRARY_PREFIX}ear${CMAKE_SHARED_LIBRARY_SUFFIX}
 set(EAR_LIB_PATH "${CMAKE_INSTALL_LIBDIR}/bear")
 set(DEFAULT_PRELOAD_FILE ${CMAKE_INSTALL_PREFIX}/${EAR_LIB_PATH}/${EAR_LIB_FILE} CACHE STRING "Default path to libear.")
 
+enable_testing()
+set(CMAKE_CTEST_COMMAND ctest -V)
+add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND})
+
 add_subdirectory(bear)
 add_subdirectory(test)
 add_subdirectory(man)
-add_subdirectory(src)
+add_subdirectory(libear_s)
+add_subdirectory(pear)
 
 set(CPACK_PACKAGE_NAME "bear")
 set(CPACK_PACKAGE_CONTACT "László Nagy")
